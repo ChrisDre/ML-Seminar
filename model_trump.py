@@ -21,7 +21,8 @@ from sklearn.impute import SimpleImputer
 from sklearn.decomposition import FactorAnalysis
 from sklearn.ensemble import ExtraTreesClassifier
 
-from sklearn.linear_model import LogisticRegression
+
+from sklearn.linear_model import LogisticRegression, RidgeClassifier, RidgeClassifierCV
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
@@ -183,8 +184,24 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 
-# TODO: it is now a classifier problem
+# set seed
 np.random.seed(5000)
+
+
+# Ridge
+clf_rc = RidgeClassifier()
+clf_rc.fit(X_train, y_train)
+
+clf_rc.score(X_train, y_train)
+clf_rc.score(X_test, y_test)
+
+
+clf_rcv = RidgeClassifierCV()
+clf_rcv.fit(X_train, y_train)
+
+clf_rcv.score(X_train, y_train)
+clf_rcv.score(X_test, y_test)
+
 
 # init list for comparison
 models = []
@@ -192,7 +209,22 @@ models = []
 
 def algo_models(X_train, X_test, y_train, y_test):
 
-    models.append(("LR", LogisticRegression()))
+    models.append(("LR", LogisticRegression(solver="saga", max_iter=10000)))
+    models.append(
+        ("LR_L1", LogisticRegression(penalty="l1", solver="saga", max_iter=10000))
+    )
+    models.append(
+        ("LR_L2", LogisticRegression(penalty="l2", solver="saga", max_iter=10000))
+    )
+    models.append(
+        (
+            "LR_EN",
+            LogisticRegression(
+                penalty="elasticnet", solver="saga", l1_ratio=0.5, max_iter=10000
+            ),
+        )
+    )
+    models.append(("Ridge", RidgeClassifierCV()))
     models.append(("CART", DecisionTreeClassifier()))
     models.append(("KNN", KNeighborsClassifier()))
     models.append(("NB", GaussianNB()))
@@ -236,142 +268,3 @@ for name, model in models:
     print("The accuracy: {}".format(acc))
     print("The Classification Report:\n {}".format(classreport))
     print("The Confusion Matrix:\n {}".format(confMat))
-
-
-# mental
-# logistic
-logisticRegr = linear_model.LogisticRegression()
-logisticRegr.fit(X_train, y_train)
-y_pred = logisticRegr.predict(X_test)
-
-
-# The coefficients
-print("Mental: Coefficients: \n", logisticRegr.coef_)
-# The mean squared error
-print("Mental: Mean squared error: %.2f" % mean_squared_error(y_test, y_pred))
-# The coefficient of determination: 1 is perfect prediction
-print("Mental: Coefficient of determination: %.2f" % r2_score(y_test, y_pred))
-
-
-# trump
-# logistic
-# logisticRegr = linear_model.LogisticRegression()
-# logisticRegr.fit(X_train, y_train)
-# ly_pred = logisticRegr.predict(X_test)
-
-
-# The coefficients
-# print("Trump: Coefficients: \n", reg.coef_)
-# # The mean squared error
-# print("Trump: Mean squared error: %.2f" % mean_squared_error(y_test, y_pred))
-# # The coefficient of determination: 1 is perfect prediction
-# print("Trump: Coefficient of determination: %.2f" % r2_score(y_test, y_pred))
-
-
-# Lasso
-reg = linear_model.LassoCV(cv=10, random_state=0)
-
-# Train the model using the training sets
-reg.fit(X_train, y_train)
-
-# Make predictions using the testing set
-y_pred = reg.predict(X_test)
-
-# The coefficients
-print("Lasso: Coefficients: \n", reg.coef_)
-# The mean squared error
-print("Lasso: Mean squared error: %.2f" % mean_squared_error(y_test, y_pred))
-# The coefficient of determination: 1 is perfect prediction
-print("Lasso: Coefficient of determination: %.2f" % r2_score(y_test, y_pred))
-
-
-# Ridge
-reg = linear_model.RidgeCV(cv=10)
-
-# Train the model using the training sets
-reg.fit(X_train, y_train)
-
-# Make predictions using the testing set
-y_pred = reg.predict(X_test)
-
-# The coefficients
-print("Ridge: Coefficients: \n", reg.coef_)
-# The mean squared error
-print("Ridge: Mean squared error: %.2f" % mean_squared_error(y_test, y_pred))
-# The coefficient of determination: 1 is perfect prediction
-print("Ridge: Coefficient of determination: %.2f" % r2_score(y_test, y_pred))
-
-
-# Elastic Net
-reg = linear_model.ElasticNetCV(cv=10, random_state=0)
-
-# Train the model using the training sets
-reg.fit(X_train, y_train)
-
-# Make predictions using the testing set
-y_pred = reg.predict(X_test)
-
-# The coefficients
-print("Elastic Net: Coefficients: \n", reg.coef_)
-# The mean squared error
-print("Elastic Net: Mean squared error: %.2f" % mean_squared_error(y_test, y_pred))
-# The coefficient of determination: 1 is perfect prediction
-print("Elastic Net: Coefficient of determination: %.2f" % r2_score(y_test, y_pred))
-
-# Decision tree
-reg = tree.DecisionTreeRegressor()
-reg = reg.fit(X_train, y_train)
-reg.predict(X_test)
-
-# The mean squared error
-print("DT: Mean squared error: %.2f" % mean_squared_error(y_test, y_pred))
-# The coefficient of determination: 1 is perfect prediction
-print("DT: Coefficient of determination: %.2f" % r2_score(y_test, y_pred))
-
-
-# k nearest neighbor
-neigh = KNeighborsRegressor(n_neighbors=2)
-neigh.fit(X_train, y_train)
-y_pred = neigh.predict(X_test)
-
-
-## ML SPEED RUN
-
-# setup ML pipelines
-pipelines = {
-    "rf": make_pipeline(StandardScaler(), RandomForestRegressor(random_state=1234)),
-    "gb": make_pipeline(StandardScaler(), GradientBoostingRegressor(random_state=1234)),
-}
-
-
-grid = {
-    "rf": {"randomforestregressor__n_estimators": [100, 200, 300]},
-    "gb": {"gradientboostingregressor__n_estimators": [100, 200, 300]},
-}
-
-# create a blank dictionary to hold the models
-fit_models = {}
-
-print(f"Starting models...")
-# loop through algos
-for algo, pipeline in pipelines.items():
-    # create new grid search cv class
-    model = GridSearchCV(pipeline, grid[algo], n_jobs=-1, cv=10)
-    # train model
-    model.fit(X_train, y_train)
-    # store results in dictionary
-    fit_models[algo] = model
-
-print(f"Models done.")
-
-
-# evaluate performance
-for algo, model in fit_models.items():
-    yhat = model.predict(X_test)
-    mse = mean_squared_error(y_test, yhat)
-    r2 = r2_score(y_test, yhat)
-    map = mean_absolute_percentage_error(y_test, yhat)
-    print(f"Metrics for {algo}: MSE:{mse}, R2: {r2}, MAP: {map}")
-
-
-x = "stop"

@@ -23,6 +23,7 @@ from sklearn.ensemble import (
 )
 from sklearn.exceptions import NotFittedError
 from sklearn.feature_selection import SelectKBest, chi2, mutual_info_classif, f_classif
+from sklearn.feature_selection import SelectFromModel
 
 
 
@@ -40,6 +41,8 @@ from sklearn.metrics import accuracy_score
 from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
 
+# set seed
+np.random.seed(5000)
 
 # load variable list from excel sheet
 df_vars = pd.read_excel("variables.xlsx", sheet_name="categories")
@@ -47,7 +50,8 @@ df_vars = pd.read_excel("variables.xlsx", sheet_name="categories")
 # get chosen variables
 chosen_vars = df_vars["Variable"].dropna().unique().tolist()
 
-# load gss sruvey data from 2018 (already pre-filtered for easier import)
+# load gss survey data from 2018 (already pre-filtered for easier import)
+# use some with labels for easier processing)
 df = pd.read_pickle("gss_2018_no_labels.pkl")
 df_labels = pd.read_pickle("gss_2018_labels.pkl")
 
@@ -55,13 +59,18 @@ df_labels = pd.read_pickle("gss_2018_labels.pkl")
 df = df[chosen_vars]
 df_labels = df_labels[chosen_vars]
 
+# replace some variables with labeled data
+vars_with_labels = ["wrkstat", "relig", "marital", "partyid", "natsoc", "natmass", "natpark", "natchld", "natsci", "natenrgy"]
+df[vars_with_labels] = df_labels[vars_with_labels]
+
 # print first 5 rows and dimensions of unprocessed dataframe
 print(f"Unprocessed data - First rows: \n {df.head()}")
 print(f"Unprocessed data - Dimensions: {df.shape}")
 
 # load NAICs to classify industries
 ind_codes_xl = pd.read_excel("industry_codes.xlsx")
-ind_codes = dict(zip(ind_codes_xl["subsector"].to_list(), ind_codes_xl["id"].to_list()))
+#ind_codes = dict(zip(ind_codes_xl["subsector"].to_list(), ind_codes_xl["id"].to_list()))
+ind_codes_labels = dict(zip(ind_codes_xl["subsector"].to_list(), ind_codes_xl["sector"].to_list()))
 
 
 # preprocessing with labels
@@ -83,15 +92,14 @@ def preprocessing(raw_df):
     raw_df["trump"] = np.where(raw_df["pres16"] == 2, 1, 0)
     raw_df.drop("pres16", axis=1, inplace=True)
 
-    # wrkstat: (Work Status) -> nominal categorical
-    raw_df["wrkstat"] = raw_df["wrkstat"].astype("category")
+    # wrkstat: (Work Status) -> do nothing
 
     # hrs1: (Hours worked last week) -> replace missing values in hrs1 with hrs2 or zero for retired/unemp etc.
     raw_df["hours_worked"] = raw_df["hrs1"].where(
-        ~raw_df["wrkstat"].isin([4, 5, 6, 7, 8]), 0
+        raw_df["wrkstat"].isin(["WORKING FULLTIME", "WORKING PARTTIME", "TEMP NOT WORKING"]), 0
     )
     raw_df["hours_worked"] = np.where(
-        raw_df["wrkstat"] == 3, raw_df["hrs2"], raw_df["hours_worked"]
+        raw_df["wrkstat"] == "TEMP NOT WORKING", raw_df["hrs2"], raw_df["hours_worked"]
     )
     raw_df.dropna(subset=["hours_worked"], inplace=True)
     raw_df.drop("hrs1", axis=1, inplace=True)
@@ -113,8 +121,7 @@ def preprocessing(raw_df):
 
     # educ: (Education in years) -> do nothing
 
-    # relig: (Religion) -> nominal categorical
-    raw_df["relig"] = raw_df["relig"].astype("category")
+    # relig: (Religion) -> do nothing
 
     # wrkgovt: (Gov employee or not) -> transform to binary govemp column
     raw_df["govemp"] = raw_df["wrkgovt"].map({1: 1, 2: 0})
@@ -124,30 +131,24 @@ def preprocessing(raw_df):
 
     # indus10: (Industry of work) -> nominal, high cardinality, collapse to fewer with industry codes
     # reduces industries from 232 to 12
-    raw_df["industry"] = raw_df["indus10"].map(ind_codes)
+    raw_df["industry"] = raw_df["indus10"].map(ind_codes_labels)
+
+    # map to categories
     raw_df["industry"] = raw_df["industry"].astype("category")
     raw_df.drop("indus10", axis=1, inplace=True)
 
-    # marital: (marriage status) -> nominal categorical
-    raw_df["marital"] = raw_df["marital"].astype("category")
+    # marital: marital status -> do nothinh´g
 
-    # partyid: (political party affiliation) -> nominal categorical
-    raw_df["partyid"] = raw_df["partyid"].astype("category")
+    # partyid: (political party affiliation) -> do nothing
 
     # vote12: (if voted in 2012) -> transform to binary voted_12 column
     raw_df["voted_12"] = np.where(raw_df["vote12"] == 1, 1, 0)
     raw_df.drop("vote12", axis=1, inplace=True)
 
-    # vote16: (same as vote12)
-    raw_df["voted_16"] = np.where(raw_df["vote16"] == 1, 1, 0)
-    raw_df.drop("vote16", axis=1, inplace=True)
-
     # income16: (income category) -> ordinal categorical
     # TODO: check value counts and maybe collapse to fewer categories
 
-    # nat variables: (opinion, if spending by govt is too little, about right or too much) -> nominal categorical
-    for col in ["natsoc", "natmass", "natpark", "natchld", "natsci", "natenrgy"]:
-        raw_df[col] = raw_df[col].astype("category")
+    # nat variables: (opinion, if spending by govt is too little, about right or too much) -> do nothing
 
     # capppun: (favor or oppose death pen) -> transform to binary fav_death_pen column
     raw_df["fav_death_pen"] = raw_df["cappun"].map({1: 1, 2: 0})
@@ -194,7 +195,7 @@ fig.suptitle("Categorical Variables", fontsize=12)
 
 for index, key in enumerate(cat_vars):
     plt.subplot(cat_rows, cat_cols, index + 1)
-    sns.countplot(data=abt, x=key)
+    sns.countplot(data=abt, y=key)
 fig.tight_layout()
 
 # binary vars
@@ -238,10 +239,6 @@ X = abt.drop(["trump"], axis=1)
 # One Hot Encoding (create dummy vars for nominal categories), set drop_first=True to avoid dummy variable trap
 X = pd.get_dummies(X, drop_first=True)
 
-# remove relig_8 to have same df as in R, (relig_8 does not exist in our processed data anyway)
-X.drop("relig_8.0", axis=1, inplace=True)
-
-
 # TODO: Scale continuous variables
 cont_vars = abt.select_dtypes(include=["float"]).columns
 X[cont_vars] = StandardScaler().fit_transform(X[cont_vars])
@@ -253,22 +250,22 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 
-# feature selection
-# TODO: check k, output df, try different score functions
-def select_features(X_train, y_train, X_test):
-	fs = SelectKBest(score_func=mutual_info_classif, k=20)
-	fs.fit(X_train, y_train)
-	X_train_fs = fs.transform(X_train)
-	X_test_fs = fs.transform(X_test)
-	return X_train_fs, X_test_fs, fs
+# feature selection: because of different data types lasso makes the most sense
+def feat_selection(X_train, X_test, y_train):
+    selector = SelectFromModel(estimator=LogisticRegression(C=1, penalty="l1", solver="saga", max_iter=10000, random_state=1234)).fit(X_train, y_train)
+    sel_cols_idx = selector.get_support()
+    sel_cols = X_train.iloc[:, sel_cols_idx].columns
+    rem_cols = X_train.iloc[:, ~sel_cols_idx].columns
+    print(f"Total features: {X_train.shape[1]}")
+    print(f"Selected features: {len(sel_cols)}")
+    print(f"Removed features: {len(rem_cols)}")
 
+    X_train_sel = X_train[sel_cols]
+    X_test_sel = X_test[sel_cols]
+    
+    return X_train_sel, X_test_sel
 
-X_train_fs, X_test_fs, fs = select_features(X_train, y_train, X_test)
-
-
-
-# set seed
-np.random.seed(5000)
+X_train_sel, X_test_sel = feat_selection(X_train, X_test, y_train)
 
 
 ## WITH HYPERPARAMETER TUNING
@@ -306,9 +303,9 @@ pipelines = {
     "SVC": make_pipeline(MinMaxScaler(), SVC(random_state=1234)),
     "GB": make_pipeline(GradientBoostingClassifier(random_state=1234)),
     "BDT": make_pipeline(BaggingClassifier(random_state=1234)),
-    "NN": make_pipeline(MLPClassifier(random_state=1234, max_iter=500)),
+    "NN": make_pipeline(MLPClassifier(random_state=1234, max_iter=1000)),
     "Stack": make_pipeline(StackingClassifier(estimators=[
-        ('ridge', RidgeClassifierCV(alpha=0.1)),
+        ('ridge', RidgeClassifierCV()),
         ('lda', LinearDiscriminantAnalysis())
         ], final_estimator=LogisticRegression(penalty="none", max_iter=10000, random_state=1234)))
 }
@@ -360,12 +357,18 @@ hypergrid = {
 
 # Hyperparameter Tuning (find best parameters for each model)
 fit_models = {}
+fit_models_sel = {}
 print("Training models...")
 for algo, pipeline in pipelines.items():
     model = GridSearchCV(pipeline, hypergrid[algo], cv=10, n_jobs=-1)
+    model_sel = GridSearchCV(pipeline, hypergrid[algo], cv=10, n_jobs=-1)
     try:
-        model.fit(X_train, y_train)
+        model.fit(X_train, y_train)  # without feature selection
         fit_models[algo] = model
+
+        model_sel.fit(X_train_sel, y_train)  # with feature selection
+        fit_models_sel[algo] = model_sel
+
         print(f"{algo} successful...")
     except NotFittedError as e:
         print(repr(e))
@@ -383,6 +386,7 @@ print("Training models done.")
 
 # evaluate performance on test partition
 results = {}
+print("*****WITHOUT FEATURE SELECTION*****")
 for algo, model in fit_models.items():
     print(f"Predicting {algo}...")
 
@@ -405,5 +409,32 @@ for algo, model in fit_models.items():
 
 
 results_df = pd.DataFrame.from_dict(results, orient='index', columns=["Accuracy", "Precision", "Recall"])
+
+results_sel = {}
+print("*****WITH FEATURE SELECTION*****")
+for algo, model in fit_models_sel.items():
+    print(f"Predicting {algo}...")
+
+    y_hat = model.predict(X_test_sel)
+
+    classreport = classification_report(y_test, y_hat)
+    conf_mat = confusion_matrix(y_test, y_hat)
+
+
+    print(f"Accuracy Score: {accuracy_score(y_test, y_hat)}")
+    print(f"Precision Score: {precision_score(y_test, y_hat)}")
+    print(f"Recall Score: {recall_score(y_test, y_hat)}")
+    print(f"Classification Report:\n {classreport}")
+    print(f"Confusion Matrix:\n {conf_mat}")
+
+    results_sel[algo] = []
+    results_sel[algo].append(accuracy_score(y_test, y_hat))
+    results_sel[algo].append(precision_score(y_test, y_hat))
+    results_sel[algo].append(recall_score(y_test, y_hat))
+
+
+
+results_sel_df = pd.DataFrame.from_dict(results_sel, orient='index', columns=["Accuracy", "Precision", "Recall"])
+
 
 x = "stop"

@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 from pandas.plotting import scatter_matrix
 import math
 
-
 from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
 from sklearn.pipeline import make_pipeline
@@ -24,9 +23,6 @@ from sklearn.ensemble import (
 from sklearn.exceptions import NotFittedError
 from sklearn.feature_selection import SelectKBest, chi2, mutual_info_classif, f_classif
 from sklearn.feature_selection import SelectFromModel
-
-
-
 
 from sklearn.linear_model import LogisticRegression, RidgeClassifierCV
 from sklearn.tree import DecisionTreeClassifier
@@ -187,16 +183,18 @@ print(f"Processed data - Dimensions: {abt.shape}")
 # categorical variables
 cat_vars = abt.select_dtypes(include=["category"]).columns
 
-cat_cols = 3
+cat_cols = 2
 cat_rows = math.ceil(len(cat_vars) / cat_cols)
 
-fig, axes = plt.subplots(cat_rows, cat_cols, figsize=(14,8))
+fig, axes = plt.subplots(cat_rows, cat_cols, figsize=(20,15))
 fig.suptitle("Categorical Variables", fontsize=12)
 
 for index, key in enumerate(cat_vars):
     plt.subplot(cat_rows, cat_cols, index + 1)
     sns.countplot(data=abt, y=key)
 fig.tight_layout()
+plt.savefig('Plots/categories.png')
+plt.close(fig)   
 
 # binary vars
 bin_vars = abt.select_dtypes(include=["int"]).columns
@@ -211,6 +209,8 @@ for index, key in enumerate(bin_vars):
     plt.subplot(bin_rows, bin_cols, index + 1)
     sns.countplot(data=abt, x=key)
 fig.tight_layout()
+plt.savefig('Plots/binary.png')
+plt.close(fig)   
 
 # continuous vars
 con_vars = abt.select_dtypes(include=["float"]).columns
@@ -225,7 +225,8 @@ for index, key in enumerate(con_vars):
     plt.subplot(con_rows, con_cols, index + 1)
     sns.histplot(data=abt, x=key)
 fig.tight_layout()
-
+plt.savefig('Plots/cont.png')
+plt.close(fig)   
 
 
 ## Models
@@ -239,7 +240,7 @@ X = abt.drop(["trump"], axis=1)
 # One Hot Encoding (create dummy vars for nominal categories), set drop_first=True to avoid dummy variable trap
 X = pd.get_dummies(X, drop_first=True)
 
-# TODO: Scale continuous variables
+# Scale continuous variables
 cont_vars = abt.select_dtypes(include=["float"]).columns
 X[cont_vars] = StandardScaler().fit_transform(X[cont_vars])
 
@@ -268,7 +269,7 @@ def feat_selection(X_train, X_test, y_train):
 X_train_sel, X_test_sel = feat_selection(X_train, X_test, y_train)
 
 
-## WITH HYPERPARAMETER TUNING
+## HYPERPARAMETER TUNING
 # Bagging: RandomForest, Boosting: AdaBoost and Gradient Boost, Stacking: StackingClassifier Ensemble of different models
 # GaussianProcessClassifier, ADABoostClassifier,
 
@@ -436,5 +437,14 @@ for algo, model in fit_models_sel.items():
 
 results_sel_df = pd.DataFrame.from_dict(results_sel, orient='index', columns=["Accuracy", "Precision", "Recall"])
 
+# save as barplot figs
+results_df.sort_values('Accuracy', ascending=False)[['Accuracy']].plot.barh(xlim=[0.5,0.9]).get_figure().savefig('Plots/No_FS')
+results_sel_df.sort_values('Accuracy', ascending=False)[['Accuracy']].plot.barh(xlim=[0.5,0.9]).get_figure().savefig('Plots/FS')
+
+# compare
+results_df_both = pd.concat([results_df['Accuracy'], results_sel_df['Accuracy']], axis=1, keys=['No FS', 'FS'])
+results_df_both.sort_values('No FS', ascending=False)[['No FS', 'FS']].plot.barh(xlim=[0.5,0.9]).get_figure().savefig('Plots/comparison')
+
+# TODO: save as pickle
 
 x = "stop"

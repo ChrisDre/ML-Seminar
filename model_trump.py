@@ -23,10 +23,8 @@ from sklearn.feature_selection import SelectFromModel
 
 # sklearn: models:
 from sklearn.neural_network import MLPClassifier
-from sklearn.linear_model import LogisticRegression, RidgeClassifierCV
+from sklearn.linear_model import LogisticRegression, RidgeClassifier
 from sklearn.tree import DecisionTreeClassifier, plot_tree
-from sklearn.naive_bayes import GaussianNB
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from sklearn.ensemble import (
@@ -215,12 +213,9 @@ cat_vars = cat_vars.rename(
     }
 )
 
-cat_cols = 3
-cat_rows = 2
-
-fig, axes = plt.subplots(cat_rows, cat_cols, figsize=(14, 8))
+fig, axes = plt.subplots(2, 3, figsize=(14, 8))
 for index, key in enumerate(cat_vars):
-    plt.subplot(cat_rows, cat_cols, index + 1)
+    plt.subplot(2, 3, index + 1)
     sns.countplot(
         data=cat_vars,
         x=key,
@@ -250,10 +245,9 @@ spend_vars = spend_vars.rename(
     }
 )
 
-
-fig, axes = plt.subplots(cat_rows, cat_cols, figsize=(14, 8))
+fig, axes = plt.subplots(2, 3, figsize=(14, 8))
 for index, key in enumerate(spend_vars):
-    plt.subplot(cat_rows, cat_cols, index + 1)
+    plt.subplot(2, 3, index + 1)
     sns.countplot(
         data=spend_vars,
         x=key,
@@ -285,12 +279,9 @@ bin_vars = bin_vars.rename(
     }
 )
 
-bin_cols = 3
-bin_rows = 3
-
-fig, axes = plt.subplots(bin_rows, bin_cols, figsize=(14, 8))
+fig, axes = plt.subplots(3, 3, figsize=(14, 8))
 for index, key in enumerate(bin_vars):
-    plt.subplot(bin_rows, bin_cols, index + 1)
+    plt.subplot(3, 3, index + 1)
     sns.countplot(data=bin_vars, x=key, palette="colorblind")
     plt.ylabel(None)
     plt.xlabel(None)
@@ -315,12 +306,9 @@ con_vars = con_vars.rename(
     }
 )
 
-con_cols = 2
-con_rows = 3
-
-fig, axes = plt.subplots(con_rows, con_cols, figsize=(14, 8))
+fig, axes = plt.subplots(3, 2, figsize=(14, 8))
 for index, key in enumerate(con_vars):
-    plt.subplot(con_rows, con_cols, index + 1)
+    plt.subplot(3, 2, index + 1)
     sns.histplot(data=con_vars, x=key, discrete=True, color="#56b4e9")
     plt.ylabel(None)
     plt.xlabel(None)
@@ -364,14 +352,14 @@ def feat_selection(X_train, X_test, y_train):
     print(f"Selected features: {len(sel_cols)}")
     print(f"Removed features: {len(rem_cols)}")
 
-    X_train_sel = X_train[sel_cols]
-    X_test_sel = X_test[sel_cols]
+    X_train_fs = X_train[sel_cols]
+    X_test_fs = X_test[sel_cols]
 
-    return X_train_sel, X_test_sel
+    return X_train_fs, X_test_fs
 
 
 # create new data sets with selected features
-X_train_sel, X_test_sel = feat_selection(X_train, X_test, y_train)
+X_train_fs, X_test_fs = feat_selection(X_train, X_test, y_train)
 
 # init all models in pipeline (can be used to combine functions)
 pipelines = {
@@ -393,82 +381,87 @@ pipelines = {
             penalty="elasticnet", solver="saga", max_iter=10000, random_state=1234
         )
     ),
-    "Ridge Classifier": make_pipeline(RidgeClassifierCV()),
+    "Ridge Classifier": make_pipeline(RidgeClassifier(random_state=1234)),
     "Decision Tree": make_pipeline(DecisionTreeClassifier(random_state=1234)),
-    "Random Forest": make_pipeline(RandomForestClassifier()),
+    "Random Forest": make_pipeline(RandomForestClassifier(random_state=1234)),
     "Bagged Trees": make_pipeline(BaggingClassifier(random_state=1234)),
     "Boosted Trees": make_pipeline(GradientBoostingClassifier(random_state=1234)),
     "k-neighbors": make_pipeline(MinMaxScaler(), KNeighborsClassifier()),
     "Neural Network": make_pipeline(MLPClassifier(random_state=1234, max_iter=1000)),
-    "Ensemble": make_pipeline(
+    "Ensemble_1": make_pipeline(
         StackingClassifier(
             estimators=[
-                ("ridge", RidgeClassifierCV()),
-                ("lda", LinearDiscriminantAnalysis()),
+                ("ridge", RidgeClassifier(random_state=1234)),
+                ("dtc", DecisionTreeClassifier(random_state=1234)),
             ],
             final_estimator=LogisticRegression(
-                penalty="none", max_iter=10000, random_state=1234
+                penalty="l1", solver="saga", max_iter=10000, random_state=1234
             ),
         )
     ),
-    "GNB": make_pipeline(GaussianNB()),
-    "LDA": make_pipeline(LinearDiscriminantAnalysis()),
-    "SVC": make_pipeline(MinMaxScaler(), SVC(random_state=1234)),
 }
 
 # Init Hyperparameter Tuning (specify model parameters to loop through and find best)
 hypergrid = {
     "Logistic Regression": {},
-    "Lasso": {"logisticregression__C": np.logspace(-4, 4, 10)},
-    "Ridge": {"logisticregression__C": np.logspace(-4, 4, 10)},
+    "Lasso": {"logisticregression__C": np.logspace(-3, 3, 10)},
+    "Ridge": {"logisticregression__C": np.logspace(-3, 3, 10)},
     "Elastic Net": {
         "logisticregression__l1_ratio": np.arange(0, 1, 0.1),
-        "logisticregression__C": np.logspace(-4, 4, 10),
+        "logisticregression__C": np.logspace(-3, 3, 10),
     },
-    "Ridge Classifier": {"ridgeclassifiercv__alphas": np.arange(0.1, 1, 0.1)},
+    "Ridge Classifier": {"ridgeclassifier__alpha": np.arange(0.1, 1, 0.1)},
     "Decision Tree": {
-        "decisiontreeclassifier__min_samples_split": [2, 4, 6],
-        "decisiontreeclassifier__min_samples_leaf": [1, 2, 3],
+        "decisiontreeclassifier__min_samples_split": [2, 3, 4],
+        "decisiontreeclassifier__min_samples_leaf": [20, 30, 40],
+        "decisiontreeclassifier__criterion": ["gini", "entropy", "log_loss"],
+        "decisiontreeclassifier__max_depth": [None, 8, 16],
+        "decisiontreeclassifier__max_features": [None, "sqrt", "log2"],
     },
     "Random Forest": {
-        "randomforestclassifier__n_estimators": [10, 100, 1000],
-        "randomforestclassifier__max_features": ["sqrt", "log2"],
+        "randomforestclassifier__n_estimators": [10, 20, 30],
+        "randomforestclassifier__max_depth": [None, 4, 8, 16],
+        "randomforestclassifier__min_samples_split": [2, 4],
+        "randomforestclassifier__min_samples_leaf": [5, 10, 20],
+        "randomforestclassifier__max_features": ["sqrt", "log2", None],
     },
-    "Bagged Trees": {"baggingclassifier__n_estimators": [10, 100, 1000]},
+    "Bagged Trees": {
+        "baggingclassifier__n_estimators": [10, 20, 30],
+        "baggingclassifier__max_samples": np.arange(0.1, 1, 0.2),
+        "baggingclassifier__max_features": np.arange(0.1, 1, 0.2),
+    },
     "Boosted Trees": {
-        "gradientboostingclassifier__n_estimators": [10, 100, 1000],
-        "gradientboostingclassifier__learning_rate": [0.01, 0.1, 0.5, 1],
+        "gradientboostingclassifier__n_estimators": [50, 100, 200],
+        "gradientboostingclassifier__learning_rate": [0.001, 0.005, 0.01],
+        "gradientboostingclassifier__loss": ["log_loss", "exponential"],
     },
     "k-neighbors": {
-        "kneighborsclassifier__leaf_size": [10, 20, 30, 40, 50],
         "kneighborsclassifier__n_neighbors": np.arange(1, 20, 1),
+        "kneighborsclassifier__leaf_size": [2, 3, 4],
         "kneighborsclassifier__p": [1, 2],
         "kneighborsclassifier__metric": ["euclidean", "manhattan", "minkowski"],
         "kneighborsclassifier__weights": ["uniform", "distance"],
     },
     "Neural Network": {
-        "mlpclassifier__alpha": [0.0001, 0.05],
-        "mlpclassifier__learning_rate": ["constant", "adaptive"],
+        "mlpclassifier__hidden_layer_sizes": [(60,), (70,), (80,), (100,)],
+        "mlpclassifier__alpha": [0.0001, 0.00015, 0.0002],
     },
-    "Ensemble": {},
-    "GNB": {},
-    "LDA": {},
-    "SVC": {},
+    "Ensemble_1": {},
 }
 
 # Train Hyperparameter Tuning (find best parameters for each model through 10-fold CV)
-fit_models = {}  # without feature selection
-fit_models_sel = {}  # only selected features
+fit_models = {}  # with hyperparameter tuning but without feature selection
+fit_models_fs = {}  # with hyperparameter tuning and feature selection
 print("\n***** TRAINING MODELS *****")
 for algo, pipeline in pipelines.items():
     model = GridSearchCV(pipeline, hypergrid[algo], cv=10, n_jobs=-1)
-    model_sel = GridSearchCV(pipeline, hypergrid[algo], cv=10, n_jobs=-1)
+    model_fs = GridSearchCV(pipeline, hypergrid[algo], cv=10, n_jobs=-1)
     try:
-        model.fit(X_train, y_train)  # without feature selection
+        model.fit(X_train, y_train)  # tuning without feature selection
         fit_models[algo] = model
 
-        model_sel.fit(X_train_sel, y_train)  # with feature selection
-        fit_models_sel[algo] = model_sel
+        model_fs.fit(X_train_fs, y_train)  # tuning with with feature selection
+        fit_models_fs[algo] = model_fs
 
         print(f"{algo} successful.")
     except NotFittedError as e:
@@ -482,9 +475,12 @@ print("***** TRAINING MODELS DONE *****\n")
 # if you want to see all parameters of the model:
 # fit_models["LR"].best_estimator_.get_params()
 
-# evaluate performance on test partition
+
+## evaluate performance on test partition
+
+# WITH HYPERPARAMETER TUNING AND NO FEATURE SELECTION
 results = {}
-print("***** RESULTS WITHOUT FEATURE SELECTION *****\n")
+print("***** RESULTS WITH TUNING BUT WITHOUT FEATURE SELECTION *****\n")
 for algo, model in fit_models.items():
     print(f"Predicting {algo}...")
 
@@ -492,55 +488,71 @@ for algo, model in fit_models.items():
 
     conf_mat = confusion_matrix(y_test, y_hat)
 
-    print(f"Accuracy Score: {accuracy_score(y_test, y_hat)}")
-    print(f"Precision Score: {precision_score(y_test, y_hat)}")
-    print(f"Recall Score: {recall_score(y_test, y_hat)}")
-    print(f"Confusion Matrix:\n {conf_mat}\n")
+    # print(f"Accuracy Score: {accuracy_score(y_test, y_hat)}")
+    # print(f"Precision Score: {precision_score(y_test, y_hat)}")
+    # print(f"Recall Score: {recall_score(y_test, y_hat)}")
+    # print(f"Confusion Matrix:\n {conf_mat}\n")
 
     results[algo] = []
     results[algo].append(accuracy_score(y_test, y_hat))
     results[algo].append(precision_score(y_test, y_hat))
     results[algo].append(recall_score(y_test, y_hat))
+    results[algo].append(conf_mat)
 
 
 results_df = pd.DataFrame.from_dict(
-    results, orient="index", columns=["Accuracy", "Precision", "Recall"]
+    results,
+    orient="index",
+    columns=["Accuracy", "Precision", "Recall", "Confusion Matrix"],
 )
 
-results_sel = {}
-print("***** RESULTS WITH FEATURE SELECTION *****")
-for algo, model in fit_models_sel.items():
+# WITH HYPERPARAMETER TUNING AND FEATURE SELECTION
+results_fs = {}
+print("***** RESULTS WITH TUNING AND FEATURE SELECTION *****")
+for algo, model in fit_models_fs.items():
     print(f"Predicting {algo}...")
 
-    y_hat = model.predict(X_test_sel)
+    y_hat = model.predict(X_test_fs)
 
     conf_mat = confusion_matrix(y_test, y_hat)
 
-    print(f"Accuracy Score: {accuracy_score(y_test, y_hat)}")
-    print(f"Precision Score: {precision_score(y_test, y_hat)}")
-    print(f"Recall Score: {recall_score(y_test, y_hat)}")
-    print(f"Confusion Matrix:\n {conf_mat}\n")
+    # print(f"Accuracy Score: {accuracy_score(y_test, y_hat)}")
+    # print(f"Precision Score: {precision_score(y_test, y_hat)}")
+    # print(f"Recall Score: {recall_score(y_test, y_hat)}")
+    # print(f"Confusion Matrix:\n {conf_mat}\n")
 
-    results_sel[algo] = []
-    results_sel[algo].append(accuracy_score(y_test, y_hat))
-    results_sel[algo].append(precision_score(y_test, y_hat))
-    results_sel[algo].append(recall_score(y_test, y_hat))
+    results_fs[algo] = []
+    results_fs[algo].append(accuracy_score(y_test, y_hat))
+    results_fs[algo].append(precision_score(y_test, y_hat))
+    results_fs[algo].append(recall_score(y_test, y_hat))
+    results_fs[algo].append(conf_mat)
 
 
-results_sel_df = pd.DataFrame.from_dict(
-    results_sel, orient="index", columns=["Accuracy", "Precision", "Recall"]
+results_fs_df = pd.DataFrame.from_dict(
+    results_fs,
+    orient="index",
+    columns=["Accuracy", "Precision", "Recall", "Confusion Matrix"],
 )
+
+# save results as pickle
+# without feature selection
+with open("Models/model_results.pkl", "wb") as handle:
+    pickle.dump(fit_models, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+# with feature selection
+with open("Models/model_results_fs.pkl", "wb") as handle:
+    pickle.dump(fit_models_fs, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 # Visualize results
 # create combined "accuracy" dataframe
 all_models_accuracy = pd.concat(
-    [results_df["Accuracy"], results_sel_df["Accuracy"]],
+    [results_df["Accuracy"], results_fs_df["Accuracy"]],
     axis=1,
-    keys=["No Feature Selection", "Feature Selection"],
+    keys=["No feature selection", "Feature Selection"],
 )
 all_models_accuracy.sort_values(
-    by=["No Feature Selection"], ascending=False, inplace=True
+    by=["No feature selection"], ascending=False, inplace=True
 )
 all_models_accuracy["Model"] = all_models_accuracy.index
 all_models_accuracy = all_models_accuracy.melt(id_vars="Model", value_name="Accuracy")
@@ -566,14 +578,47 @@ plt.savefig("Plots/results.png", dpi=300)
 plt.close(fig)
 
 
-# save as pickle
-# without feature selection
-with open("Models/model_results.pkl", "wb") as handle:
-    pickle.dump(fit_models, handle, protocol=pickle.HIGHEST_PROTOCOL)
+# visualize trees
+trees = {
+    "decision_tree": fit_models["Decision Tree"].best_estimator_.named_steps[
+        "decisiontreeclassifier"
+    ],
+    "random_forest_tree": fit_models["Random Forest"]
+    .best_estimator_.named_steps["randomforestclassifier"]
+    .estimators_[0],
+    "bagged_tree": fit_models["Bagged Trees"]
+    .best_estimator_.named_steps["baggingclassifier"]
+    .estimators_[0],
+    "boosted_tree": fit_models["Boosted Trees"]
+    .best_estimator_.named_steps["gradientboostingclassifier"]
+    .estimators_[0][0],
+}
 
-# with feature selection
-with open("Models/model_results_fs.pkl", "wb") as handle:
-    pickle.dump(fit_models_sel, handle, protocol=pickle.HIGHEST_PROTOCOL)
+for name, tree in trees.items():
+    fig = plt.figure(figsize=(14, 8))
+    _ = plot_tree(
+        tree,
+        feature_names=X_train.columns,
+        filled=True,
+        class_names=["Voted Other", "Voted Trump"],
+    )
+    plt.savefig("Plots/" + name + ".png", dpi=300)
+    plt.close(fig)
 
+# feature importance for decision tree
+dtc_feature_importance = pd.DataFrame(
+    trees["decision_tree"].feature_importances_, index=X_train.columns
+).sort_values(by=0, ascending=False)
+
+# TODO: better plot
+fig, ax = plt.subplots(figsize=(14, 8))
+sns.barplot(
+    x=dtc_feature_importance.index[0:10],
+    y=dtc_feature_importance[0][0:10],
+)
+plt.xticks(rotation=45, ha="right", rotation_mode="anchor", fontsize=10)
+fig.tight_layout()
+plt.savefig("Plots/decision_tree_features.png", dpi=300)
+plt.close(fig)
 
 x = "stop"

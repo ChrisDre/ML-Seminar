@@ -41,15 +41,15 @@ np.random.seed(5000)
 # DATA
 
 # load variable list from excel sheet
-df_vars = pd.read_excel("variables.xlsx", sheet_name="categories")
+df_vars = pd.read_excel("data/variables.xlsx", sheet_name="categories")
 
 # get chosen variables
 chosen_vars = df_vars["Variable"].dropna().unique().tolist()
 
 # load gss survey data from 2018 (already pre-filtered for easier import)
 # (use some with labels for easier processing)
-df = pd.read_pickle("gss_2018_no_labels.pkl")
-df_labels = pd.read_pickle("gss_2018_labels.pkl")
+df = pd.read_pickle("data/gss_2018_no_labels.pkl")
+df_labels = pd.read_pickle("data/gss_2018_labels.pkl")
 
 # filter for chosen trump variables
 df = df[chosen_vars]
@@ -60,7 +60,6 @@ vars_with_labels = [
     "wrkstat",
     "relig",
     "marital",
-    "partyid",
     "natsoc",
     "natmass",
     "natpark",
@@ -75,7 +74,7 @@ print(f"\nUnprocessed data - First rows: \n {df.head()}")
 print(f"\nUnprocessed data - Dimensions: \n {df.shape}")
 
 # load NAICs to classify industries
-ind_codes_xl = pd.read_excel("industry_codes.xlsx")
+ind_codes_xl = pd.read_excel("data/industry_codes.xlsx")
 ind_codes_labels = dict(
     zip(ind_codes_xl["subsector"].to_list(), ind_codes_xl["short"].to_list())
 )
@@ -149,8 +148,6 @@ def preprocessing(raw_df):
 
     # marital: marital status -> do nothinh´g
 
-    # partyid: (political party affiliation) -> do nothing
-
     # vote12: (if voted in 2012) -> transform to binary voted_12 column
     raw_df["voted_12"] = np.where(raw_df["vote12"] == 1, 1, 0)
     raw_df.drop("vote12", axis=1, inplace=True)
@@ -202,20 +199,19 @@ print(f"\nProcessed data - Dimensions: \n{abt.shape}")
 # VISUALIZATION
 
 # categorical variables (nat variables separately)
-cat_vars = abt[["wrkstat", "relig", "marital", "partyid", "industry"]]
+cat_vars = abt[["wrkstat", "relig", "marital", "industry"]]
 cat_vars = cat_vars.rename(
     columns={
         "wrkstat": "Work Status",
         "relig": "Religion",
         "marital": "Marital Status",
-        "partyid": "Party Affiliation",
         "industry": "Industry",
     }
 )
 
-fig, axes = plt.subplots(2, 3, figsize=(14, 8))
+fig, axes = plt.subplots(2, 2, figsize=(14, 8))
 for index, key in enumerate(cat_vars):
-    plt.subplot(2, 3, index + 1)
+    plt.subplot(2, 2, index + 1)
     sns.countplot(
         data=cat_vars,
         x=key,
@@ -226,9 +222,9 @@ for index, key in enumerate(cat_vars):
     plt.ylabel(None)
     plt.xlabel(None)
     plt.title(key, fontsize=15)
-fig.delaxes(axes[1][2])
+# fig.delaxes(axes[1][2])
 fig.tight_layout()
-plt.savefig("Plots/categories.png", dpi=300)
+plt.savefig("plots/categories.png", dpi=300)
 plt.close(fig)
 
 
@@ -259,7 +255,7 @@ for index, key in enumerate(spend_vars):
     plt.xlabel(None)
     plt.title(key, fontsize=16)
 fig.tight_layout()
-plt.savefig("Plots/categories_spending.png", dpi=300)
+plt.savefig("plots/categories_spending.png", dpi=300)
 plt.close(fig)
 
 
@@ -289,7 +285,7 @@ for index, key in enumerate(bin_vars):
 fig.delaxes(axes[2][1])
 fig.delaxes(axes[2][2])
 fig.tight_layout()
-plt.savefig("Plots/binary.png", dpi=300)
+plt.savefig("plots/binary.png", dpi=300)
 plt.close(fig)
 
 
@@ -314,7 +310,7 @@ for index, key in enumerate(con_vars):
     plt.xlabel(None)
     plt.title(key, fontsize=16)
 fig.tight_layout()
-plt.savefig("Plots/cont.png", dpi=300)
+plt.savefig("plots/cont.png", dpi=300)
 plt.close(fig)
 
 
@@ -335,7 +331,7 @@ X[cont_vars] = StandardScaler().fit_transform(X[cont_vars])
 
 # create train and test splits
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.3, random_state=1111
+    X, y, test_size=0.3, random_state=99
 )
 
 # feature selection: because of different data types Lasso makes the most sense
@@ -387,12 +383,14 @@ pipelines = {
     "Bagged Trees": make_pipeline(BaggingClassifier(random_state=1234)),
     "Boosted Trees": make_pipeline(GradientBoostingClassifier(random_state=1234)),
     "k-neighbors": make_pipeline(MinMaxScaler(), KNeighborsClassifier()),
-    "Neural Network": make_pipeline(MLPClassifier(random_state=1234, max_iter=1000)),
+    "Neural Network": make_pipeline(
+        MLPClassifier(solver="lbfgs", random_state=1234, max_iter=1000)
+    ),
     "Ensemble_1": make_pipeline(
         StackingClassifier(
             estimators=[
-                ("ridge", RidgeClassifier(random_state=1234)),
-                ("dtc", DecisionTreeClassifier(random_state=1234)),
+                ("model1", RidgeClassifier(random_state=1234)),
+                ("model2", RandomForestClassifier(random_state=1234)),
             ],
             final_estimator=LogisticRegression(
                 penalty="l1", solver="saga", max_iter=10000, random_state=1234
@@ -403,14 +401,24 @@ pipelines = {
 
 # Init Hyperparameter Tuning (specify model parameters to loop through and find best)
 hypergrid = {
-    "Logistic Regression": {},
-    "Lasso": {"logisticregression__C": np.logspace(-3, 3, 10)},
-    "Ridge": {"logisticregression__C": np.logspace(-3, 3, 10)},
+    "Logistic Regression": {"logisticregression__class_weight": [None, "balanced"]},
+    "Lasso": {
+        "logisticregression__C": np.logspace(-4, 4, 10),
+        "logisticregression__class_weight": [None, "balanced"],
+    },
+    "Ridge": {
+        "logisticregression__C": np.logspace(-4, 4, 10),
+        "logisticregression__class_weight": [None, "balanced"],
+    },
     "Elastic Net": {
         "logisticregression__l1_ratio": np.arange(0, 1, 0.1),
-        "logisticregression__C": np.logspace(-3, 3, 10),
+        "logisticregression__C": np.logspace(-4, 4, 10),
+        "logisticregression__class_weight": [None, "balanced"],
     },
-    "Ridge Classifier": {"ridgeclassifier__alpha": np.arange(0.1, 1, 0.1)},
+    "Ridge Classifier": {
+        "ridgeclassifier__alpha": np.arange(0.1, 1, 0.1),
+        "ridgeclassifier__class_weight": [None, "balanced"],
+    },
     "Decision Tree": {
         "decisiontreeclassifier__min_samples_split": [2, 3, 4],
         "decisiontreeclassifier__min_samples_leaf": [20, 30, 40],
@@ -419,21 +427,24 @@ hypergrid = {
         "decisiontreeclassifier__max_features": [None, "sqrt", "log2"],
     },
     "Random Forest": {
-        "randomforestclassifier__n_estimators": [10, 20, 30],
-        "randomforestclassifier__max_depth": [None, 4, 8, 16],
+        "randomforestclassifier__n_estimators": [30, 40, 50, 60],
+        "randomforestclassifier__max_depth": [None, 6, 8, 10, 12],
         "randomforestclassifier__min_samples_split": [2, 4],
-        "randomforestclassifier__min_samples_leaf": [5, 10, 20],
+        "randomforestclassifier__min_samples_leaf": [2, 4, 6],
         "randomforestclassifier__max_features": ["sqrt", "log2", None],
+        "randomforestclassifier__class_weight": [None, "balanced"],
     },
     "Bagged Trees": {
-        "baggingclassifier__n_estimators": [10, 20, 30],
-        "baggingclassifier__max_samples": np.arange(0.1, 1, 0.2),
-        "baggingclassifier__max_features": np.arange(0.1, 1, 0.2),
+        "baggingclassifier__n_estimators": [20, 30, 40, 50],
+        "baggingclassifier__max_samples": np.arange(0.1, 1, 0.1),
+        "baggingclassifier__max_features": np.arange(0.1, 1, 0.1),
     },
     "Boosted Trees": {
-        "gradientboostingclassifier__n_estimators": [50, 100, 200],
-        "gradientboostingclassifier__learning_rate": [0.001, 0.005, 0.01],
+        "gradientboostingclassifier__n_estimators": [100, 200, 300],
+        "gradientboostingclassifier__learning_rate": [0.005, 0.01, 0.02],
         "gradientboostingclassifier__loss": ["log_loss", "exponential"],
+        "gradientboostingclassifier__subsample": np.arange(0.1, 1, 0.1),
+        "gradientboostingclassifier__criterion": ["friedman_mse", "squared_error"],
     },
     "k-neighbors": {
         "kneighborsclassifier__n_neighbors": np.arange(1, 20, 1),
@@ -443,10 +454,17 @@ hypergrid = {
         "kneighborsclassifier__weights": ["uniform", "distance"],
     },
     "Neural Network": {
-        "mlpclassifier__hidden_layer_sizes": [(60,), (70,), (80,), (100,)],
+        "mlpclassifier__hidden_layer_sizes": [(75,), (100,), (75, 75), (100, 100)],
         "mlpclassifier__alpha": [0.0001, 0.00015, 0.0002],
     },
-    "Ensemble_1": {},
+    "Ensemble_1": {
+        "stackingclassifier__model1__alpha": np.arange(0.1, 1, 0.2),
+        "stackingclassifier__model1__class_weight": ["balanced"],
+        "stackingclassifier__model2__class_weight": ["balanced"],
+        "stackingclassifier__model2__n_estimators": [30, 50],
+        "stackingclassifier__final_estimator__C": np.logspace(-3, 3, 5),
+        "stackingclassifier__final_estimator__class_weight": ["balanced"],
+    },
 }
 
 # Train Hyperparameter Tuning (find best parameters for each model through 10-fold CV)
@@ -536,11 +554,11 @@ results_fs_df = pd.DataFrame.from_dict(
 
 # save results as pickle
 # without feature selection
-with open("Models/model_results.pkl", "wb") as handle:
+with open("models/model_results.pkl", "wb") as handle:
     pickle.dump(fit_models, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 # with feature selection
-with open("Models/model_results_fs.pkl", "wb") as handle:
+with open("models/model_results_fs.pkl", "wb") as handle:
     pickle.dump(fit_models_fs, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
@@ -567,14 +585,14 @@ sns.barplot(
     palette=["#55aa99", "#cde4df"],
 )
 plt.xticks(rotation=45, ha="right", rotation_mode="anchor", fontsize=10)
-plt.ylim([0.6, 0.9])
+plt.ylim([0.5, 0.8])
 plt.title("Accuracy", fontsize=15)
 ax.legend(ncol=2, loc="upper right", frameon=True)
 ax.set(ylabel="", xlabel="")
 for bars in ax.containers:
     ax.bar_label(bars, fmt="%.2f")
 fig.tight_layout()
-plt.savefig("Plots/results.png", dpi=300)
+plt.savefig("plots/results.png", dpi=300)
 plt.close(fig)
 
 
@@ -602,7 +620,7 @@ for name, tree in trees.items():
         filled=True,
         class_names=["Voted Other", "Voted Trump"],
     )
-    plt.savefig("Plots/" + name + ".png", dpi=300)
+    plt.savefig("plots/" + name + ".png", dpi=300)
     plt.close(fig)
 
 # feature importance for decision tree
@@ -618,7 +636,7 @@ sns.barplot(
 )
 plt.xticks(rotation=45, ha="right", rotation_mode="anchor", fontsize=10)
 fig.tight_layout()
-plt.savefig("Plots/decision_tree_features.png", dpi=300)
+plt.savefig("plots/decision_tree_features.png", dpi=300)
 plt.close(fig)
 
 x = "stop"

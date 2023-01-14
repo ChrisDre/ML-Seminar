@@ -38,7 +38,8 @@ from sklearn.ensemble import (
 # set seed
 np.random.seed(5000)
 
-# DATA
+
+## 1.) DATA
 
 # load variable list from excel sheet
 df_vars = pd.read_excel("data/variables.xlsx", sheet_name="categories")
@@ -47,15 +48,15 @@ df_vars = pd.read_excel("data/variables.xlsx", sheet_name="categories")
 chosen_vars = df_vars["Variable"].dropna().unique().tolist()
 
 # load gss survey data from 2018 (already pre-filtered for easier import)
-# (use some with labels for easier processing)
+# (use some with labels for faster processing)
 df = pd.read_pickle("data/gss_2018_no_labels.pkl")
 df_labels = pd.read_pickle("data/gss_2018_labels.pkl")
 
-# filter for chosen trump variables
+# filter data sets for chosen variables
 df = df[chosen_vars]
 df_labels = df_labels[chosen_vars]
 
-# replace some unlabeled variables with labeled variables
+# replace some unlabeled variables with labeled variables (faster processing)
 vars_with_labels = [
     "wrkstat",
     "relig",
@@ -73,7 +74,7 @@ df[vars_with_labels] = df_labels[vars_with_labels]
 print(f"\nUnprocessed data - First rows: \n {df.head()}")
 print(f"\nUnprocessed data - Dimensions: \n {df.shape}")
 
-# load NAICs to classify industries
+# load NAICs to classify industries (to collapse to fewer categories)
 ind_codes_xl = pd.read_excel("data/industry_codes.xlsx")
 ind_codes_labels = dict(
     zip(ind_codes_xl["subsector"].to_list(), ind_codes_xl["short"].to_list())
@@ -196,7 +197,7 @@ print(f"\nProcessed data - First rows: \n{abt.head()}")
 print(f"\nProcessed data - Dimensions: \n{abt.shape}")
 
 
-# VISUALIZATION
+## 2.) VISUALIZATION
 
 # categorical variables (nat variables separately)
 cat_vars = abt[["wrkstat", "relig", "marital", "industry"]]
@@ -222,11 +223,9 @@ for index, key in enumerate(cat_vars):
     plt.ylabel(None)
     plt.xlabel(None)
     plt.title(key, fontsize=15)
-# fig.delaxes(axes[1][2])
 fig.tight_layout()
 plt.savefig("plots/categories.png", dpi=300)
 plt.close(fig)
-
 
 # nat variables (spending as a country -> government)
 spend_vars = abt[["natsoc", "natmass", "natpark", "natchld", "natsci", "natenrgy"]]
@@ -257,7 +256,6 @@ for index, key in enumerate(spend_vars):
 fig.tight_layout()
 plt.savefig("plots/categories_spending.png", dpi=300)
 plt.close(fig)
-
 
 # binary vars
 bin_vars = abt[
@@ -314,7 +312,7 @@ plt.savefig("plots/cont.png", dpi=300)
 plt.close(fig)
 
 
-## MODELS
+## 3.) MODELS
 
 # create target variable
 y = abt["trump"]
@@ -399,7 +397,7 @@ pipelines = {
     ),
 }
 
-# Init Hyperparameter Tuning (specify model parameters to loop through and find best)
+# init hypergrid (specify model parameters to loop through and find best combination)
 hypergrid = {
     "Logistic Regression": {"logisticregression__class_weight": [None, "balanced"]},
     "Lasso": {
@@ -467,9 +465,10 @@ hypergrid = {
     },
 }
 
-# Train Hyperparameter Tuning (find best parameters for each model through 10-fold CV)
+# train Hyperparameter Tuning (find best parameters for each model through 10-fold CV)
 fit_models = {}  # with hyperparameter tuning but without feature selection
 fit_models_fs = {}  # with hyperparameter tuning and feature selection
+
 print("\n***** TRAINING MODELS *****")
 for algo, pipeline in pipelines.items():
     model = GridSearchCV(pipeline, hypergrid[algo], cv=10, n_jobs=-1)
@@ -486,7 +485,7 @@ for algo, pipeline in pipelines.items():
         print(repr(e))
 print("***** TRAINING MODELS DONE *****\n")
 
-
+# parameters:
 # if you want so see the selected hyperparameters of the model:
 # fit_models["LR_lasso"].best_params_
 
@@ -494,7 +493,7 @@ print("***** TRAINING MODELS DONE *****\n")
 # fit_models["LR"].best_estimator_.get_params()
 
 
-## evaluate performance on test partition
+## 4.) EVALUATION (evaluate performance on test partition)
 
 # WITH HYPERPARAMETER TUNING AND NO FEATURE SELECTION
 results = {}
@@ -517,7 +516,7 @@ for algo, model in fit_models.items():
     results[algo].append(recall_score(y_test, y_hat))
     results[algo].append(conf_mat)
 
-
+# save to dataframe
 results_df = pd.DataFrame.from_dict(
     results,
     orient="index",
@@ -545,14 +544,14 @@ for algo, model in fit_models_fs.items():
     results_fs[algo].append(recall_score(y_test, y_hat))
     results_fs[algo].append(conf_mat)
 
-
+# save to dataframe
 results_fs_df = pd.DataFrame.from_dict(
     results_fs,
     orient="index",
     columns=["Accuracy", "Precision", "Recall", "Confusion Matrix"],
 )
 
-# save results as pickle
+# save results as pickle (to access later without running again)
 # without feature selection
 with open("models/model_results.pkl", "wb") as handle:
     pickle.dump(fit_models, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -562,7 +561,7 @@ with open("models/model_results_fs.pkl", "wb") as handle:
     pickle.dump(fit_models_fs, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-# Visualize results
+## 5.) VISUALIZE RESULTS
 # create combined "accuracy" dataframe
 all_models_accuracy = pd.concat(
     [results_df["Accuracy"], results_fs_df["Accuracy"]],
@@ -575,7 +574,7 @@ all_models_accuracy.sort_values(
 all_models_accuracy["Model"] = all_models_accuracy.index
 all_models_accuracy = all_models_accuracy.melt(id_vars="Model", value_name="Accuracy")
 
-# plot results
+# plot accuracy results
 fig, ax = plt.subplots(figsize=(14, 8))
 sns.barplot(
     x="Model",
@@ -595,8 +594,8 @@ fig.tight_layout()
 plt.savefig("plots/results.png", dpi=300)
 plt.close(fig)
 
-
 # visualize trees
+# init tree models
 trees = {
     "decision_tree": fit_models["Decision Tree"].best_estimator_.named_steps[
         "decisiontreeclassifier"
@@ -612,6 +611,7 @@ trees = {
     .estimators_[0][0],
 }
 
+# plot each tree
 for name, tree in trees.items():
     fig = plt.figure(figsize=(14, 8))
     _ = plot_tree(
@@ -620,15 +620,57 @@ for name, tree in trees.items():
         filled=True,
         class_names=["Voted Other", "Voted Trump"],
     )
-    plt.savefig("plots/" + name + ".png", dpi=300)
+    plt.savefig("plots/" + name + ".png", dpi=600)
     plt.close(fig)
+
+# in-sample vs. out-of-sample predictions
+# mean cross-validated score of the best estimator after hyperparamter tuning
+in_sample_accuracy = {}
+for algo, model in fit_models.items():
+    in_sample_accuracy[algo] = fit_models[algo].best_score_
+
+in_sample_accuracy_df = pd.DataFrame.from_dict(
+    in_sample_accuracy, orient="index", columns=["Accuracy"]
+)
+
+in_out_compare = pd.concat(
+    [results_df["Accuracy"], in_sample_accuracy_df["Accuracy"]],
+    axis=1,
+    keys=["Out-of-sample", "In-sample"],
+)
+in_out_compare.sort_values(by=["Out-of-sample"], ascending=False, inplace=True)
+in_out_compare["Model"] = in_out_compare.index
+in_out_compare = in_out_compare.melt(id_vars="Model", value_name="Accuracy")
+
+# plot comparison results
+fig, ax = plt.subplots(figsize=(14, 8))
+sns.barplot(
+    x="Model",
+    y="Accuracy",
+    hue="variable",
+    data=in_out_compare,
+    palette=["#55aa99", "#cde4df"],
+)
+plt.xticks(rotation=45, ha="right", rotation_mode="anchor", fontsize=10)
+plt.ylim([0.5, 0.8])
+plt.title("In-sample vs. out-of-sample", fontsize=15)
+ax.legend(ncol=2, loc="upper right", frameon=True)
+ax.set(ylabel="", xlabel="")
+for bars in ax.containers:
+    ax.bar_label(bars, fmt="%.2f")
+fig.tight_layout()
+plt.savefig("plots/in_out_comparison.png", dpi=300)
+plt.close(fig)
+
+
+# feature importance trees
 
 # feature importance for decision tree
 dtc_feature_importance = pd.DataFrame(
     trees["decision_tree"].feature_importances_, index=X_train.columns
 ).sort_values(by=0, ascending=False)
 
-# TODO: better plot
+# plot
 fig, ax = plt.subplots(figsize=(14, 8))
 sns.barplot(
     x=dtc_feature_importance.index[0:10],
@@ -639,4 +681,61 @@ fig.tight_layout()
 plt.savefig("plots/decision_tree_features.png", dpi=300)
 plt.close(fig)
 
+# feature importance for random forest
+rfc_feature_importance = pd.DataFrame(
+    fit_models["Random Forest"]
+    .best_estimator_.named_steps["randomforestclassifier"]
+    .feature_importances_,
+    index=X_train.columns,
+).sort_values(by=0, ascending=False)
+
+# plot
+fig, ax = plt.subplots(figsize=(14, 8))
+sns.barplot(
+    x=rfc_feature_importance.index[0:10],
+    y=rfc_feature_importance[0][0:10],
+)
+plt.xticks(rotation=45, ha="right", rotation_mode="anchor", fontsize=10)
+fig.tight_layout()
+plt.savefig("plots/random_forest_features.png", dpi=300)
+plt.close(fig)
+
+# feature importance for boosted trees
+gbc_feature_importance = pd.DataFrame(
+    fit_models["Boosted Trees"]
+    .best_estimator_.named_steps["gradientboostingclassifier"]
+    .feature_importances_,
+    index=X_train.columns,
+).sort_values(by=0, ascending=False)
+
+# plot
+fig, ax = plt.subplots(figsize=(14, 8))
+sns.barplot(
+    x=gbc_feature_importance.index[0:10],
+    y=gbc_feature_importance[0][0:10],
+)
+plt.xticks(rotation=45, ha="right", rotation_mode="anchor", fontsize=10)
+fig.tight_layout()
+plt.savefig("plots/boosted_trees_features.png", dpi=300)
+plt.close(fig)
+
+# feature importance regressions
+for algo, model in fit_models.items():
+    if algo in ["Logistic Regression", "Lasso", "Ridge", "Elastic Net"]:
+        coefs = fit_models[algo].best_estimator_.named_steps["logisticregression"].coef_
+        coefs = pd.DataFrame({"Variable": X_train.columns, "Coefficient": coefs[0]})
+        coefs = coefs.reindex(
+            coefs.Coefficient.abs().sort_values(ascending=False).index
+        )
+        # print(coefs)
+
+        fig, ax = plt.subplots(figsize=(14, 8))
+        sns.barplot(x=coefs.Variable, y=coefs.Coefficient)
+        plt.xticks(rotation=45, ha="right", rotation_mode="anchor", fontsize=10)
+        fig.tight_layout()
+        plt.savefig("plots/" + algo + "_coefficients" + ".png", dpi=600)
+        plt.close(fig)
+
+
+# random breakpoint
 x = "stop"

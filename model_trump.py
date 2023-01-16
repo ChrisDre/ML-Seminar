@@ -11,7 +11,7 @@ import math
 # sklearn: processing, selection, analysis
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (
     confusion_matrix,
     accuracy_score,
@@ -25,8 +25,6 @@ from sklearn.feature_selection import SelectFromModel
 from sklearn.neural_network import MLPClassifier
 from sklearn.linear_model import LogisticRegression, RidgeClassifier
 from sklearn.tree import DecisionTreeClassifier, plot_tree
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.svm import SVC
 from sklearn.ensemble import (
     GradientBoostingClassifier,
     RandomForestClassifier,
@@ -349,6 +347,19 @@ def feat_selection(X_train, X_test, y_train):
     X_train_fs = X_train[sel_cols]
     X_test_fs = X_test[sel_cols]
 
+    # plot coefficients
+    coefs = selector.estimator_.coef_
+    coefs = pd.DataFrame({"Variable": X_train.columns, "Coefficient": coefs[0]})
+    coefs = coefs.reindex(
+        coefs.Coefficient.abs().sort_values(ascending=False).index
+    )
+    fig, ax = plt.subplots(figsize=(14, 8))
+    sns.barplot(x=coefs.Variable, y=coefs.Coefficient)
+    plt.xticks(rotation=45, ha="right", rotation_mode="anchor", fontsize=10)
+    fig.tight_layout()
+    plt.savefig("plots/feature_selection.png", dpi=600)
+    plt.close(fig)
+
     return X_train_fs, X_test_fs
 
 
@@ -380,7 +391,6 @@ pipelines = {
     "Random Forest": make_pipeline(RandomForestClassifier(random_state=1234)),
     "Bagged Trees": make_pipeline(BaggingClassifier(random_state=1234)),
     "Boosted Trees": make_pipeline(GradientBoostingClassifier(random_state=1234)),
-    "k-neighbors": make_pipeline(MinMaxScaler(), KNeighborsClassifier()),
     "Neural Network": make_pipeline(
         MLPClassifier(solver="lbfgs", random_state=1234, max_iter=1000)
     ),
@@ -443,13 +453,6 @@ hypergrid = {
         "gradientboostingclassifier__loss": ["log_loss", "exponential"],
         "gradientboostingclassifier__subsample": np.arange(0.1, 1, 0.1),
         "gradientboostingclassifier__criterion": ["friedman_mse", "squared_error"],
-    },
-    "k-neighbors": {
-        "kneighborsclassifier__n_neighbors": np.arange(1, 20, 1),
-        "kneighborsclassifier__leaf_size": [2, 3, 4],
-        "kneighborsclassifier__p": [1, 2],
-        "kneighborsclassifier__metric": ["euclidean", "manhattan", "minkowski"],
-        "kneighborsclassifier__weights": ["uniform", "distance"],
     },
     "Neural Network": {
         "mlpclassifier__hidden_layer_sizes": [(75,), (100,), (75, 75), (100, 100)],
@@ -572,6 +575,7 @@ all_models_accuracy.sort_values(
     by=["No feature selection"], ascending=False, inplace=True
 )
 all_models_accuracy["Model"] = all_models_accuracy.index
+all_models_accuracy[["No feature selection", "Feature Selection"]] = all_models_accuracy[["No feature selection", "Feature Selection"]] * 100
 all_models_accuracy = all_models_accuracy.melt(id_vars="Model", value_name="Accuracy")
 
 # plot accuracy results
@@ -584,7 +588,7 @@ sns.barplot(
     palette=["#55aa99", "#cde4df"],
 )
 plt.xticks(rotation=45, ha="right", rotation_mode="anchor", fontsize=10)
-plt.ylim([0.5, 0.8])
+plt.ylim([60, 80])
 plt.title("Accuracy", fontsize=15)
 ax.legend(ncol=2, loc="upper right", frameon=True)
 ax.set(ylabel="", xlabel="")
@@ -640,6 +644,7 @@ in_out_compare = pd.concat(
 )
 in_out_compare.sort_values(by=["Out-of-sample"], ascending=False, inplace=True)
 in_out_compare["Model"] = in_out_compare.index
+in_out_compare[["Out-of-sample", "In-sample"]] = in_out_compare[["Out-of-sample", "In-sample"]] * 100
 in_out_compare = in_out_compare.melt(id_vars="Model", value_name="Accuracy")
 
 # plot comparison results
@@ -652,7 +657,7 @@ sns.barplot(
     palette=["#55aa99", "#cde4df"],
 )
 plt.xticks(rotation=45, ha="right", rotation_mode="anchor", fontsize=10)
-plt.ylim([0.5, 0.8])
+plt.ylim([50, 80])
 plt.title("In-sample vs. out-of-sample", fontsize=15)
 ax.legend(ncol=2, loc="upper right", frameon=True)
 ax.set(ylabel="", xlabel="")
@@ -737,5 +742,6 @@ for algo, model in fit_models.items():
         plt.close(fig)
 
 
-# random breakpoint
+
+# end breakpoint for debugging
 x = "stop"
